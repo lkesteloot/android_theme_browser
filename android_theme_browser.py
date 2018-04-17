@@ -31,7 +31,8 @@ class Theme(object):
             # Implicit parent.
             parts = self.name.split(".")
             if len(parts) == 1:
-                sys.stderr.write("Warning: Can't infer parent of %s\n" % self.name)
+                # Not a warning, this is fine.
+                ## sys.stderr.write("Warning: Can't infer parent of %s\n" % self.name)
                 self.parent_name = None
             else:
                 self.parent_name = ".".join(parts[:-1])
@@ -53,11 +54,19 @@ class Theme(object):
         else:
             self.parent = name_to_theme.get(self.parent_name)
             if self.parent is None:
-                sys.stderr.write("Error: Can't find parent %s of %s\n" % (self.parent_name, self.name))
+                sys.stderr.write("Error: Can't find parent %s of %s (%s)\n" % (self.parent_name, self.name, self.pathname))
                 sys.exit(1)
 
-    def dump(self, out, name_to_theme):
-        out.write("%s:\n" % self.name)
+    def dump(self, out, name_to_theme, attr):
+        out.write("%s (%s):\n" % (self.name, self.pathname))
+
+        # Show theme ancestry.
+        theme = self.parent
+        while theme is not None:
+            out.write("    %s (%s)\n" % (theme.name, theme.pathname))
+            theme = theme.parent
+
+        out.write("\n")
 
         # Union of all items.
         theme = self
@@ -68,15 +77,16 @@ class Theme(object):
 
         # List them all in alphabetical order.
         for item_name in sorted(item_names):
-            out.write("    %s\n" % item_name)
+            if attr is None or attr == item_name:
+                out.write("    %s\n" % item_name)
 
-            # Walk up the tree.
-            theme = self
-            while theme is not None:
-                item = theme.item_map.get(item_name)
-                if item is not None:
-                    out.write("        %s (%s, %s)\n" % (item.value, theme.name, theme.pathname))
-                theme = theme.parent
+                # Walk up the tree.
+                theme = self
+                while theme is not None:
+                    item = theme.item_map.get(item_name)
+                    if item is not None:
+                        out.write("        %s (%s, %s)\n" % (item.value, theme.name, theme.pathname))
+                    theme = theme.parent
 
         out.write("\n")
 
@@ -91,16 +101,19 @@ def load_file(pathname, namespace):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('res_dirs', metavar="DIR", nargs="+", help="res directories")
+    parser.add_argument('--theme', metavar="THEME", help="theme to dump (default: all)")
+    parser.add_argument('--attr', metavar="ATTR", help="attribute to dump (default: all)")
     args = parser.parse_args()
 
     # Load the themes into a map by name.
     name_to_theme = {}
     for res_dir in args.res_dirs:
+        namespace = "android:" if "/sdk/" in res_dir else ""
         value_dir = os.path.join(res_dir, "values")
         pathnames = glob.glob(os.path.join(value_dir, "themes*.xml"))
 
         for pathname in pathnames:
-            namespace = "android:" if "/sdk/" in pathname else ""
+            sys.stderr.write("Info: Loading file %s\n" % pathname)
             themes = load_file(pathname, namespace)
             for theme in themes:
                 existing_theme = name_to_theme.get(theme.name)
@@ -109,12 +122,22 @@ def main():
                     sys.exit(1)
                 name_to_theme[theme.name] = theme
 
+    sys.stdout.write("\n")
+
     # Resolve parenting.
     for theme in name_to_theme.values():
         theme.resolve_parenting(name_to_theme)
 
     # Dump all the themes.
-    for theme in name_to_theme.values():
-        theme.dump(sys.stdout, name_to_theme)
+    if args.theme is None:
+        for theme in name_to_theme.values():
+            theme.dump(sys.stdout, name_to_theme, args.attr)
+    else:
+        theme = name_to_theme.get(args.theme)
+        if theme is None:
+            sys.stderr.write("Theme not found: %s" % args.theme)
+            sys.exit(1)
+
+        theme.dump(sys.stdout, name_to_theme, args.attr)
 
 main()
