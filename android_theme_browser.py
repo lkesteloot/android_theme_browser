@@ -2,12 +2,27 @@
 import sys
 import argparse
 import os.path
+import re
 import xml.etree.ElementTree
 import glob
 
-# Load a set of files from the command line.
-# Find all themes and their parents.
-# Print all themes fully fleshed out.
+VALUES_RE = re.compile(r"values-v(\d+)")
+
+class ValuesDir(object):
+    def __init__(self, pathname):
+        self.pathname = pathname
+
+        filename = os.path.basename(pathname)
+
+        if filename == "values":
+            self.api = 0
+        else:
+            match = VALUES_RE.match(filename)
+            if match:
+                self.api = int(match.group(1))
+            else:
+                # Other "v" qualifier, such as "vi".
+                self.api = None
 
 class Item(object):
     def __init__(self, item, namespace):
@@ -103,24 +118,40 @@ def main():
     parser.add_argument('res_dirs', metavar="DIR", nargs="+", help="res directories")
     parser.add_argument('--theme', metavar="THEME", help="theme to dump (default: all)")
     parser.add_argument('--attr', metavar="ATTR", help="attribute to dump (default: all)")
+    parser.add_argument('--api', type=int, metavar="API", help="API level (default: most recent)")
     args = parser.parse_args()
 
     # Load the themes into a map by name.
     name_to_theme = {}
     for res_dir in args.res_dirs:
         namespace = "android:" if "/sdk/" in res_dir else ""
-        value_dir = os.path.join(res_dir, "values")
-        pathnames = glob.glob(os.path.join(value_dir, "themes*.xml"))
 
-        for pathname in pathnames:
-            sys.stderr.write("Info: Loading file %s\n" % pathname)
-            themes = load_file(pathname, namespace)
-            for theme in themes:
-                existing_theme = name_to_theme.get(theme.name)
-                if existing_theme is not None:
-                    sys.stderr.write("Error: Theme %s from %s was also in %s\n" % (theme.name, pathname, existing_theme.pathname))
-                    sys.exit(1)
-                name_to_theme[theme.name] = theme
+        # Find the most recent value dir that is <= API. Note that our glob
+        # here is sloppy because the directories might combine multiple
+        # qualifiers.
+        values_dirs = [ValuesDir(pathname) for pathname in glob.glob(os.path.join(res_dir, "values-v*"))]
+
+        # Insert default directory.
+        values_dirs.insert(0, ValuesDir(os.path.join(res_dir, "values")))
+
+        # Filter valid dirs.
+        values_dirs = [values_dir for values_dir in values_dirs if values_dir.api is not None]
+
+        # Filter by our API version.
+        if args.api is not None:
+            values_dirs = [values_dir for values_dir in values_dirs if values_dir.api <= args.api]
+
+        # Sort by API version.
+        values_dirs.sort(key=lambda values_dir: values_dir.api)
+
+        for values_dir in values_dirs:
+            pathnames = glob.glob(os.path.join(values_dir.pathname, "themes*.xml"))
+
+            for pathname in pathnames:
+                sys.stderr.write("Info: Loading file %s\n" % pathname)
+                themes = load_file(pathname, namespace)
+                for theme in themes:
+                    name_to_theme[theme.name] = theme
 
     sys.stdout.write("\n")
 
