@@ -7,6 +7,7 @@ import xml.etree.ElementTree
 import glob
 
 VALUES_RE = re.compile(r"values-v(\d+)")
+MAX_API = 27
 
 class ValuesDir(object):
     def __init__(self, pathname):
@@ -105,6 +106,19 @@ class Theme(object):
 
         out.write("\n")
 
+    def get_attr(self, attr_name):
+        # Walk up the tree.
+        theme = self
+        while theme is not None:
+            item = theme.item_map.get(attr_name)
+            if item is not None:
+                return item.value
+            theme = theme.parent
+
+        # Not found.
+        return None
+
+
 def load_file(pathname, namespace):
     resources = xml.etree.ElementTree.parse(pathname).getroot()
     if resources.tag != "resources":
@@ -113,17 +127,10 @@ def load_file(pathname, namespace):
 
     return [Theme(style, pathname, namespace) for style in resources if style.tag == "style"]
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('res_dirs', metavar="DIR", nargs="+", help="res directories")
-    parser.add_argument('--theme', metavar="THEME", help="theme to dump (default: all)")
-    parser.add_argument('--attr', metavar="ATTR", help="attribute to dump (default: all)")
-    parser.add_argument('--api', type=int, metavar="API", help="API level (default: most recent)")
-    args = parser.parse_args()
-
+def parse_themes(res_dirs, theme_name, attr_name, api, sweeping_api):
     # Load the themes into a map by name.
     name_to_theme = {}
-    for res_dir in args.res_dirs:
+    for res_dir in res_dirs:
         namespace = "android:" if "/sdk/" in res_dir else ""
 
         # Find the most recent value dir that is <= API. Note that our glob
@@ -138,8 +145,8 @@ def main():
         values_dirs = [values_dir for values_dir in values_dirs if values_dir.api is not None]
 
         # Filter by our API version.
-        if args.api is not None:
-            values_dirs = [values_dir for values_dir in values_dirs if values_dir.api <= args.api]
+        if api is not None:
+            values_dirs = [values_dir for values_dir in values_dirs if values_dir.api <= api]
 
         # Sort by API version.
         values_dirs.sort(key=lambda values_dir: values_dir.api)
@@ -148,27 +155,53 @@ def main():
             pathnames = glob.glob(os.path.join(values_dir.pathname, "themes*.xml"))
 
             for pathname in pathnames:
-                sys.stderr.write("Info: Loading file %s\n" % pathname)
+                if not sweeping_api:
+                    sys.stderr.write("Info: Loading file %s\n" % pathname)
                 themes = load_file(pathname, namespace)
                 for theme in themes:
                     name_to_theme[theme.name] = theme
 
-    sys.stdout.write("\n")
+    if not sweeping_api:
+        sys.stdout.write("\n")
 
     # Resolve parenting.
     for theme in name_to_theme.values():
         theme.resolve_parenting(name_to_theme)
 
-    # Dump all the themes.
-    if args.theme is None:
+    # Dump results.
+    if theme_name is None:
         for theme in name_to_theme.values():
-            theme.dump(sys.stdout, name_to_theme, args.attr)
+            theme.dump(sys.stdout, name_to_theme, attr_name)
     else:
-        theme = name_to_theme.get(args.theme)
+        theme = name_to_theme.get(theme_name)
         if theme is None:
-            sys.stderr.write("Theme not found: %s" % args.theme)
+            sys.stderr.write("Theme not found: %s" % theme_name)
             sys.exit(1)
 
-        theme.dump(sys.stdout, name_to_theme, args.attr)
+        if sweeping_api:
+            sys.stdout.write("%2d: %s\n" % (api, theme.get_attr(attr_name)))
+        else:
+            theme.dump(sys.stdout, name_to_theme, attr_name)
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('res_dirs', metavar="DIR", nargs="+", help="res directories")
+    parser.add_argument('--theme', metavar="THEME", help="theme to dump (default: all)")
+    parser.add_argument('--attr', metavar="ATTR", help="attribute to dump (default: all)")
+    parser.add_argument('--api', metavar="API", help="API level or \"all\" (default: most recent)")
+    args = parser.parse_args()
+
+    if args.api == "all":
+        if args.theme is None or args.attr is None:
+            sys.stderr.write("Must specify both theme and attr with \"all\".\n")
+            sys.exit(1)
+
+        for api in range(1, MAX_API + 1):
+            parse_themes(args.res_dirs, args.theme, args.attr, api, True)
+    else:
+        if args.api is not None:
+            args.api = int(args.api)
+
+        parse_themes(args.res_dirs, args.theme, args.attr, args.api, False)
 
 main()
