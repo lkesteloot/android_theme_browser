@@ -46,7 +46,7 @@ flag:
     --api 20
 
 To look at how a specific attribute changes over all APIs,
-specify the theme and attribute and use "all" for the API:
+specify the theme and attribute and use `all` for the API:
 
     --theme Theme.AppCompat.Light.NoActionBar --attr android:listViewStyle --api all
 
@@ -92,3 +92,21 @@ namespace.
 called `values-vN` where `N` is the API number. It ignored more qualified
 directories like `values-fr-v21`.
 
+3. When sweeping, it only goes up to API 27, which was the max API when
+the script was written.
+
+# License
+
+Copyright 2018 Lawrence Kesteloot
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
