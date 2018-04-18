@@ -8,6 +8,7 @@ import glob
 
 VALUES_RE = re.compile(r"values-v(\d+)")
 MAX_API = 27
+PATHNAME_TO_RESOURCES_CACHE = {}
 
 class ValuesDir(object):
     def __init__(self, pathname):
@@ -118,12 +119,14 @@ class Theme(object):
         # Not found.
         return None
 
-
 def load_file(pathname, namespace):
-    resources = xml.etree.ElementTree.parse(pathname).getroot()
-    if resources.tag != "resources":
-        sys.stderr.write("Error: File %s is not a resource\n" % pathname)
-        sys.exit(1)
+    resources = PATHNAME_TO_RESOURCES_CACHE.get(pathname)
+    if resources is None:
+        resources = xml.etree.ElementTree.parse(pathname).getroot()
+        if resources.tag != "resources":
+            sys.stderr.write("Error: File %s is not a resource\n" % pathname)
+            sys.exit(1)
+        PATHNAME_TO_RESOURCES_CACHE[pathname] = resources
 
     return [Theme(style, pathname, namespace) for style in resources if style.tag == "style"]
 
