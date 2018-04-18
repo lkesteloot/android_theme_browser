@@ -10,6 +10,9 @@ VALUES_RE = re.compile(r"values-v(\d+)")
 MAX_API = 27
 PATHNAME_TO_RESOURCES_CACHE = {}
 
+# Represents the pathname to a values resource directory.
+# Pulls out the api number (e.g., "values-v21" sets
+# the "api" field to "21").
 class ValuesDir(object):
     def __init__(self, pathname):
         self.pathname = pathname
@@ -26,6 +29,7 @@ class ValuesDir(object):
                 # Other "v" qualifier, such as "vi".
                 self.api = None
 
+# Represents an item row in a theme and its value.
 class Item(object):
     def __init__(self, item, namespace):
         self.name = item.attrib["name"]
@@ -34,6 +38,7 @@ class Item(object):
         if ":" not in self.name:
             self.name = namespace + self.name
 
+# Represents a theme (its name, items, and parent).
 class Theme(object):
     def __init__(self, style, pathname, namespace):
         self.pathname = pathname
@@ -65,6 +70,8 @@ class Theme(object):
         items = [Item(item, namespace) for item in style if item.tag == "item"]
         self.item_map = dict((item.name, item) for item in items)
 
+    # Sets the "parent" field (which points to a Theme) from its
+    # "parent_name" field (which is a string).
     def resolve_parenting(self, name_to_theme):
         if self.parent_name is None:
             self.parent = None
@@ -74,6 +81,7 @@ class Theme(object):
                 sys.stderr.write("Error: Can't find parent %s of %s (%s)\n" % (self.parent_name, self.name, self.pathname))
                 sys.exit(1)
 
+    # Dump this theme to the output.
     def dump(self, out, name_to_theme, attr):
         out.write("%s (%s):\n" % (self.name, self.pathname))
 
@@ -107,6 +115,7 @@ class Theme(object):
 
         out.write("\n")
 
+    # Get the resolved value of the attribute by name.
     def get_attr(self, attr_name):
         # Walk up the tree.
         theme = self
@@ -119,6 +128,7 @@ class Theme(object):
         # Not found.
         return None
 
+# Load a file into an array of Theme objects.
 def load_file(pathname, namespace):
     resources = PATHNAME_TO_RESOURCES_CACHE.get(pathname)
     if resources is None:
@@ -131,9 +141,12 @@ def load_file(pathname, namespace):
     return [Theme(style, pathname, namespace) for style in resources if style.tag == "style"]
 
 def parse_themes(res_dirs, theme_name, attr_name, api, sweeping_api):
+    # Parse the themes in the resource dirs.
+
     # Load the themes into a map by name.
     name_to_theme = {}
     for res_dir in res_dirs:
+        # Guess if these themes are implicitly in the "android:" namespace.
         namespace = "android:" if "/sdk/" in res_dir else ""
 
         # Find the most recent value dir that is <= API. Note that our glob
@@ -141,19 +154,20 @@ def parse_themes(res_dirs, theme_name, attr_name, api, sweeping_api):
         # qualifiers.
         values_dirs = [ValuesDir(pathname) for pathname in glob.glob(os.path.join(res_dir, "values-v*"))]
 
-        # Insert default directory.
-        values_dirs.insert(0, ValuesDir(os.path.join(res_dir, "values")))
+        # Add default directory.
+        values_dirs.append(ValuesDir(os.path.join(res_dir, "values")))
 
         # Filter valid dirs.
         values_dirs = [values_dir for values_dir in values_dirs if values_dir.api is not None]
 
-        # Filter by our API version.
+        # Filter by our API version if necessary.
         if api is not None:
             values_dirs = [values_dir for values_dir in values_dirs if values_dir.api <= api]
 
         # Sort by API version.
         values_dirs.sort(key=lambda values_dir: values_dir.api)
 
+        # Load all theme files in each directory.
         for values_dir in values_dirs:
             pathnames = glob.glob(os.path.join(values_dir.pathname, "themes*.xml"))
 
@@ -173,17 +187,21 @@ def parse_themes(res_dirs, theme_name, attr_name, api, sweeping_api):
 
     # Dump results.
     if theme_name is None:
+        # Dump all themes.
         for theme in name_to_theme.values():
             theme.dump(sys.stdout, name_to_theme, attr_name)
     else:
+        # Dump specific theme.
         theme = name_to_theme.get(theme_name)
         if theme is None:
-            sys.stderr.write("Theme not found: %s" % theme_name)
+            sys.stderr.write("Theme not found: %s\n" % theme_name)
             sys.exit(1)
 
         if sweeping_api:
+            # Dump specific attribute as part of an API sweep.
             sys.stdout.write("%2d: %s\n" % (api, theme.get_attr(attr_name)))
         else:
+            # Dump all attributes of this theme.
             theme.dump(sys.stdout, name_to_theme, attr_name)
 
 def main():
@@ -207,4 +225,5 @@ def main():
 
         parse_themes(args.res_dirs, args.theme, args.attr, args.api, False)
 
-main()
+if __name__ == "__main__":
+    main()
