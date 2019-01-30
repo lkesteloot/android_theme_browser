@@ -89,11 +89,14 @@ part of the Android platform. It uses this to implicitly add the `android:`
 namespace.
 
 2. It assumes that the only platform-dependent values directory are simply
-called `values-vN` where `N` is the API number. It ignored more qualified
+called `values-vN` where `N` is the API number. It ignores more qualified
 directories like `values-fr-v21`.
 
 3. When sweeping, it only goes up to API 27, which was the max API when
 the script was written.
+
+4. The script assumes that themes are all in files called `themes*.xml`
+in the `values` directory, and that those files only contain themes.
 
 # License
 
